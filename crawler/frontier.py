@@ -13,6 +13,21 @@ class Frontier(object):
         self.config = config
         self.to_be_downloaded = list()
         
+        self.save = shelve.open(self.config.save_file)
+        if restart:
+            self.logger.info("re-starting from seed.")
+            self.save.clear()
+            for url in self.config.seed_urls:
+                self.add_url(url)
+        else:
+            self.logger.info("loading frontier from shelved file if exists")
+            # Set the frontier state with contents of save file.
+            self._parse_save_file()
+            if not self.save:
+                self.logger.info("Shelve file was empty or non existing, loading seed urls")
+                for url in self.config.seed_urls:
+                    self.add_url(url)
+        
         if not os.path.exists(self.config.save_file) and not restart:
             # Save file does not exist, but request to load save.
             self.logger.info(

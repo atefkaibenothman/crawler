@@ -7,6 +7,15 @@ from urllib.parse import urlparse
 from urllib.parse import urldefrag
 from urllib.parse import urljoin
 
+
+# DONE! Honor the politeness delay for each site
+# TODO Crawl all pages with high textual information content
+# TODO Detect and avoid infinite traps
+# TODO Detect and avoid sets of similar pages with no information
+# DONE! Detect and avoid dead URLs that return a 200 status but no data
+# TODO Detect and avoid crawling very large files, especially if they have low information value
+
+
 # Holds the longest page in terms of number of words
 longest_page = 0
 longest_page_url = ""
@@ -68,6 +77,7 @@ def insert_into_word_freq(content):
 def count_words_page(content):
     return len(extract_all_words(content))
 
+
 def scraper(url, resp):
     global num_unique_pages
 
@@ -92,14 +102,10 @@ def scraper(url, resp):
     result = etree.tostring(html, pretty_print=True, method="html")
 
     links = extract_next_links(url, resp)
-    extracted_valid_links = [link for link in links if is_valid(link)]
 
     ### REPORT ###
-
     # 1. Count the number of unique pages found in the entire set
-    num_unique_pages += len(extracted_valid_links)
-    # for i in extracted_valid_links:
-    #    print(i)
+    num_unique_pages += len(links)
 
     # # 2. Longest page in terms of number of words
     # global longest_page         # should not be using global??
@@ -122,28 +128,28 @@ def scraper(url, resp):
     print("=================================================================")
     print("url: ", url)
     print("status: ", status)
-    # print("num unique pages (total): ", num_unique_pages)
+    print("unique links found (total)", num_unique_pages)
     print("=================================================================\n")
     ### END OF REPORT ###
-
-    return extracted_valid_links
+    
+    return links
 
 
 # this should be working now
 def extract_next_links(url, resp):
-    # find all the links in the html and return a list of them
     urls=[]
     content = resp.raw_response.content
     html = etree.HTML(content)
     for href in html.xpath('//a/@href'):
         href = urldefrag(href)[0]
-        # You need to "normalize" the links. Normalization includes making them absolute, and getting rid of the fragment part.
+        # normalizes URL and converts relative -> absolute
         href_normalized = urljoin(url, href, allow_fragments=False)
-        print('normalized: ', href_normalized)
-        print(is_valid(href_normalized))
-        if href_normalized not in visited:
-            urls.append(href_normalized)
-            visited.add(href_normalized)
+        # removes extension
+        href_normalized_no_extension = os.path.splitext(href_normalized)[0]
+        if (is_valid(href_normalized) and is_valid(href_normalized_no_extension)):
+            if href_normalized_no_extension not in visited:
+                urls.append(href_normalized_no_extension)
+                visited.add(href_normalized_no_extension)
     return urls
 
 

@@ -1,14 +1,18 @@
 import re
-from urllib.parse import urlparse
+import os
+import time
 from lxml import etree
 from io import StringIO, BytesIO
-import time
-
-# You need to "normalize" the links. Normalization includes making them absolute, and getting rid of the fragment part.
+from urllib.parse import urlparse
+from urllib.parse import urldefrag
+from urllib.parse import urljoin
 
 # Holds the longest page in terms of number of words
 longest_page = 0
 longest_page_url = ""
+
+# Holds the number of unqiue pages found
+num_unique_pages = 0
 
 # Set containing all English stopWords
 stop_words = set()
@@ -60,28 +64,16 @@ def insert_into_word_freq(content):
         else:
             word_frequency[word] += 1
 
-# Counts the number of unique links given a list of links
-def count_unique_pages(links):
-    unique_pages = set()
-    for link in links:
-        if is_valid(link):
-            unique_pages.add(link)
-    return len(unique_pages)
-
 # Returns the number of words in a page
 def count_words_page(content):
     return len(extract_all_words(content))
 
 def scraper(url, resp):
-    status = resp.status
-    error = resp.error
-    url = resp.url
+    global num_unique_pages
 
-    # print("--------")
-    # print(status)
-    # print(error)
-    # print(url)
-    # print("----")
+    status = resp.status
+    error  = resp.error
+    url    = resp.url
 
     # Politeness. Check if diff is less than 500 miliseconds.
     # This is wrong though. It should just have a delay of 500 miliseconds.
@@ -100,62 +92,64 @@ def scraper(url, resp):
     result = etree.tostring(html, pretty_print=True, method="html")
 
     links = extract_next_links(url, resp)
+    extracted_valid_links = [link for link in links if is_valid(link)]
 
     ### REPORT ###
-    print("=================================")
+
+    # 1. Count the number of unique pages found in the entire set
+    num_unique_pages += len(extracted_valid_links)
+    # for i in extracted_valid_links:
+    #    print(i)
+
+    # # 2. Longest page in terms of number of words
+    # global longest_page         # should not be using global??
+    # global longest_page_url
+
+    # num_words_page = count_words_page(content)
+    # if (num_words_page > longest_page):
+    #     longest_page = num_words_page
+    #     longest_page_url = url
+
+    # # 3. 50 most common words in the entire set of pages
+    # # step 1: add all stopWords to set
+    # stop_word_file = "./stop_words.txt"
+    # insert_stop_words(stop_word_file)       # need to fix this... only need to call it once
+
+    # # step 2: add all text from content to word_frequency dictionary
+    # insert_into_word_freq(content)
+    # # print_most_frequent_words(50)         # prints the n most frequent words in the entire set of pages
+    
+    print("=================================================================")
     print("url: ", url)
     print("status: ", status)
-    print("=================================")
+    # print("num unique pages (total): ", num_unique_pages)
+    print("=================================================================\n")
+    ### END OF REPORT ###
 
-    # 1. Count unique pages
-    num_unique_pages = count_unique_pages(links)
+    return extracted_valid_links
 
-    # 2. Longest page in terms of number of words
-    global longest_page         # should not be using global??
-    global longest_page_url
-
-    num_words_page = count_words_page(content)
-    if (num_words_page > longest_page):
-        longest_page = num_words_page
-        longest_page_url = url
-
-    # 3. 50 most common words in the entire set of pages
-    # step 1: add all stopWords to set
-    stop_word_file = "./stop_words.txt"
-    insert_stop_words(stop_word_file)       # need to fix this... only need to call it once
-
-    # step 2: add all text from content to word_frequency dictionary
-    insert_into_word_freq(content)
-    # print_most_frequent_words(50)         # prints the n most frequent words in the entire set of pages
-    
-    # print statements
-    print("num words in page: ", num_words_page)
-    print("num unique pages found: ", num_unique_pages)
-    print("longest page in entire set: ", longest_page)
-    print("longest page url in entire set: ", longest_page_url)
-    print_most_frequent_words(50)
-    print("---------------------------------\n")
-    ### RETURN ###
-
-    return [link for link in links if is_valid(link)]
 
 # this should be working now
 def extract_next_links(url, resp):
-    # Implementation requred.
-    # passed in the url and response from scraper.
     # find all the links in the html and return a list of them
-
     urls=[]
     content = resp.raw_response.content
     html = etree.HTML(content)
     for href in html.xpath('//a/@href'):
-        if href not in visited:
-            urls.append(href)
+        href = urldefrag(href)[0]
+        # You need to "normalize" the links. Normalization includes making them absolute, and getting rid of the fragment part.
+        href_normalized = urljoin(url, href, allow_fragments=False)
+        print('normalized: ', href_normalized)
+        print(is_valid(href_normalized))
+        if href_normalized not in visited:
+            urls.append(href_normalized)
+            visited.add(href_normalized)
     return urls
+
 
 def is_valid(url):
     try:
-        parsed = urlparse(url)
+        parsed = urlparse(url, allow_fragments=False)
         if parsed.netloc not in set(["www.informatics.uci.edu", "www.ics.uci.edu", "www.cs.uci.edu", "www.stat.uci.edu", "www.today.uci.edu/department/information_computer_sciences"]):
             return False
         if parsed.scheme not in set(["http", "https"]):

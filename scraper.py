@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 from urllib.parse import urldefrag
 from urllib.parse import urljoin
 import hashlib
-from lxml.html import fragment_fromstring
+from bs4 import BeautifulSoup
 
 count = 0
 
@@ -102,16 +102,19 @@ def scraper(url, resp):
     html = etree.HTML(content)
     result = etree.tostring(html, pretty_print=True, method="html")
 
-    toHash = fragment_fromstring(result)
-    for href in toHash.xpath('//a/@href'):
-        href.drop_tag()
-    hash_result = result.tostring(html, pretty_print=True, method="html")
+    soup = BeautifulSoup(result)
+    
+    if (soup.find("p")):
+        p = soup.find("p").getText()
 
-    hash_object = hashlib.md5(hash_result).hexdigest()
-    if hash_object in hashed_content:
-        return []
-    else:
-        hashed_content.add(hash_object)
+        hash_object = hashlib.md5(str(p).encode('utf-8')).hexdigest()
+        if hash_object in hashed_content:
+            print("DUPLICATE SITE", url)
+            return []
+        else:
+            hashed_content.add(hash_object)
+
+        print("hash: ", hash_object)
 
     links = extract_next_links(url, resp)
     count += 1
@@ -121,8 +124,8 @@ def scraper(url, resp):
     print("count: ", count)
     print("url: ", url)
     print("status: ", status)
-    print("hash: ", hash_object)
-    print(result)
+    # print(str(soup))
+    # print(result)
     # i = 0
     # for link in links:
     #     i += 1

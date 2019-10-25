@@ -6,15 +6,10 @@ from io import StringIO, BytesIO
 from urllib.parse import urlparse
 from urllib.parse import urldefrag
 from urllib.parse import urljoin
+import hashlib
+from lxml.html import fragment_fromstring
 
-
-# DONE! Honor the politeness delay for each site
-# TODO Crawl all pages with high textual information content
-# TODO Detect and avoid infinite traps
-# TODO Detect and avoid sets of similar pages with no information
-# DONE! Detect and avoid dead URLs that return a 200 status but no data
-# TODO Detect and avoid crawling very large files, especially if they have low information value
-
+count = 0
 
 # Holds the longest page in terms of number of words
 longest_page = 0
@@ -77,9 +72,11 @@ def insert_into_word_freq(content):
 def count_words_page(content):
     return len(extract_all_words(content))
 
+hashed_content = set()
 
 def scraper(url, resp):
     global num_unique_pages
+    global count
 
     status = resp.status
     error  = resp.error
@@ -89,53 +86,52 @@ def scraper(url, resp):
     # This is wrong though. It should just have a delay of 500 miliseconds.
     # Where to put this delay though? In this file??
     current_time = int(round(time.time() * 1000))
-    if url in time_visited:
-        if current_time - time_visited[url] < 500:
-            return []
-    time_visited[url] = current_time
+    parsed = urlparse(url, allow_fragments=False)
+    if parsed.netloc in time_visited:
+        if current_time - time_visited[parsed.netloc] < 500:
+            # print("sleeping for ", (500-(current_time-time_visited[parsed.netloc])-1) * .001)
+            time.sleep((500-(current_time-time_visited[parsed.netloc])-1) * .001)
+    current_time = int(round(time.time() * 1000))
+    time_visited[parsed.netloc] = current_time
 
     if status != 200 or (status == 200 and resp.raw_response.content == ''):
         return []
 
+    
     content = resp.raw_response.content
     html = etree.HTML(content)
     result = etree.tostring(html, pretty_print=True, method="html")
 
+    toHash = fragment_fromstring(result)
+    for href in toHash.xpath('//a/@href'):
+        href.drop_tag()
+    hash_result = result.tostring(html, pretty_print=True, method="html")
+
+    hash_object = hashlib.md5(hash_result).hexdigest()
+    if hash_object in hashed_content:
+        return []
+    else:
+        hashed_content.add(hash_object)
+
     links = extract_next_links(url, resp)
+    count += 1
 
     ### REPORT ###
-    # 1. Count the number of unique pages found in the entire set
-    num_unique_pages += len(links)
-
-    # # 2. Longest page in terms of number of words
-    # global longest_page         # should not be using global??
-    # global longest_page_url
-
-    # num_words_page = count_words_page(content)
-    # if (num_words_page > longest_page):
-    #     longest_page = num_words_page
-    #     longest_page_url = url
-
-    # # 3. 50 most common words in the entire set of pages
-    # # step 1: add all stopWords to set
-    # stop_word_file = "./stop_words.txt"
-    # insert_stop_words(stop_word_file)       # need to fix this... only need to call it once
-
-    # # step 2: add all text from content to word_frequency dictionary
-    # insert_into_word_freq(content)
-    # # print_most_frequent_words(50)         # prints the n most frequent words in the entire set of pages
-    
-    print("=================================================================")
+    print("============================")
+    print("count: ", count)
     print("url: ", url)
     print("status: ", status)
-    print("unique links found (total)", num_unique_pages)
-    print("=================================================================\n")
-    ### END OF REPORT ###
-    
+    print("hash: ", hash_object)
+    print(result)
+    # i = 0
+    # for link in links:
+    #     i += 1
+    #     print(i, ": ", link)
+    print("============================\n")
+    ### END REPORT ###
+
     return links
 
-
-# this should be working now
 def extract_next_links(url, resp):
     urls=[]
     content = resp.raw_response.content
@@ -156,7 +152,7 @@ def extract_next_links(url, resp):
 def is_valid(url):
     try:
         parsed = urlparse(url, allow_fragments=False)
-        if parsed.netloc not in set(["www.informatics.uci.edu", "www.ics.uci.edu", "www.cs.uci.edu", "www.stat.uci.edu", "www.today.uci.edu/department/information_computer_sciences"]):
+        if parsed.netloc not in set(["www.informatics.uci.edu", "www.ics.uci.edu", "www.cs.uci.edu", "www.stat.uci.edu", "www.today.uci.edu/department/information_computer_sciences"]) or parsed.netloc == "www.archive.ics.uci.edu":
             return False
         if parsed.scheme not in set(["http", "https"]):
             return False
